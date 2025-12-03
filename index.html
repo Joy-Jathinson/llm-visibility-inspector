@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>LLM Visibility Inspector – See What ChatGPT Sees</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    name="description"
+    content="Paste your page HTML to see what LLMs and crawlers actually see: headings, text, schema, links, and potential JavaScript-dependence issues."
+  />
+  <style>
+    :root {
+      --bg: #050816;
+      --bg-card: #0b1020;
+      --border: #1e293b;
+      --accent: #22c55e;
+      --accent-soft: rgba(34, 197, 94, 0.12);
+      --text: #e5e7eb;
+      --text-muted: #9ca3af;
+      --danger: #f97373;
+      --code-bg: #020617;
+      --font: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+      --radius: 14px;
+      --shadow: 0 18px 45px rgba(15, 23, 42, 0.9);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background: radial-gradient(circle at top, #111827 0, #020617 40%, #000 100%);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 16px 48px;
+    }
+
+    header {
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.8);
+    }
+
+    h1 {
+      font-size: clamp(1.9rem, 3vw, 2.6rem);
+      line-height: 1.1;
+      margin: 0;
+    }
+
+    .title-highlight {
+      color: var(--accent);
+    }
+
+    .subtitle {
+      max-width: 640px;
+      font-size: 0.96rem;
+      color: var(--text-muted);
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .card {
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), #020617);
+      border-radius: var(--radius);
+      border: 1px solid rgba(30, 64, 175, 0.4);
+      box-shadow: var(--shadow);
+      padding: 18px 18px 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.09), transparent 60%);
+      opacity: 0.9;
+      pointer-events: none;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #e5e7eb;
+    }
+
+    .card-subtitle {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 260px;
+      background: var(--code-bg);
+      border-radius: 10px;
+      border: 1px solid #1f2937;
+      padding: 10px 12px;
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      resize: vertical;
+      outline: none;
+    }
+
+    textarea::placeholder {
+      color: #4b5563;
+    }
+
+    .helper-text {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+
+    .helper-text code {
+      background: rgba(15, 23, 42, 0.9);
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+    }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 0;
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      color: #0b1120;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(34, 197, 94, 0.45);
+      transition: transform 0.12s ease, box-shadow 0.12s ease,
+        filter 0.12s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 18px 36px rgba(34, 197, 94, 0.6);
+      filter: brightness(1.05);
+    }
+
+    button:active {
+      transform: translateY(0);
+      box-shadow: 0 10px 24px rgba(34, 197, 94, 0.4);
+    }
+
+    button span.icon {
+      font-size: 1rem;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      color: var(--text-muted);
+    }
+
+    .pill--accent {
+      border-color: rgba(34, 197, 94, 0.6);
+      background: var(--accent-soft);
+      color: #bbf7d0;
+    }
+
+    .results {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 520px;
+      overflow: auto;
+    }
+
+    .result-block {
+      background: rgba(2, 6, 23, 0.9);
+      border-radius: 10px;
+      border: 1px solid rgba(30, 64, 175, 0.4);
+      padding: 10px 11px 9px;
+    }
+
+    .result-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .result-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #e5e7eb;
+    }
+
+    .result-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    pre {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 180px;
+      overflow: auto;
+    }
+
+    .muted {
+      color: var(--text-muted);
+    }
+
+    .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      color: #9ca3af;
+    }
+
+    .metrics-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .metric-pill {
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(30, 64, 175, 0.7);
+    }
+
+    .metric-pill strong {
+      color: #e5e7eb;
+    }
+
+    .status-ok {
+      color: #4ade80;
+    }
+
+    .status-warn {
+      color: #facc15;
+    }
+
+    .status-bad {
+      color: #fb7185;
+    }
+
+    .small {
+      font-size: 11px;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      font-size: 11px;
+      color: var(--text-muted);
+      max-width: 680px;
+    }
+
+    .footer-note strong {
+      color: #e5e7eb;
+    }
+
+    .link {
+      color: #60a5fa;
+      text-decoration: none;
+    }
+
+    .link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="badge">
+        <span class="badge-dot"></span>
+        LLM Visibility Inspector · HTML-first SEO
+      </div>
+      <h1>
+        See what
+        <span class="title-highlight">LLMs & crawlers</span>
+        actually see on your page.
+      </h1>
+      <p class="subtitle">
+        Paste the <strong>raw HTML</strong> of any page (View Source) and this
+        tool will show you the content, headings, schema, and links that
+        search engines and LLMs can see <em>before</em> JavaScript runs.
+      </p>
+    </header>
+
+    <main>
+      <!-- INPUT SIDE -->
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">1 · Paste your page HTML</div>
+            <div class="card-subtitle">
+              From browser “View page source” – not the rendered DOM.
+            </div>
+          </div>
+        </div>
+
+        <textarea
+          id="htmlInput"
+          spellcheck="false"
+          placeholder="Steps:
+1. Open your page in Chrome.
+2. Right–click → View page source.
+3. Press Ctrl+A then Ctrl+C to copy all HTML.
+4. Paste it here, then click “Analyze HTML”."
+        ></textarea>
+
+        <div class="helper-text">
+          This simulates the first HTML snapshot that
+          <strong>Google</strong> and <strong>LLMs</strong> ingest.
+          No JavaScript, no rendering – just HTML.  
+          <br />Optional: paste your page URL here for reference:
+          <code id="urlHint"></code>
+        </div>
+
+        <div class="pill-row">
+          <div class="pill pill--accent">LLM & GEO debugging</div>
+          <div class="pill">HTML-first SEO</div>
+          <div class="pill">Schema visibility</div>
+          <div class="pill">JS-dependence heuristic</div>
+        </div>
+
+        <button id="analyzeBtn">
+          <span class="icon">🔍</span>
+          <span>Analyze HTML</span>
+        </button>
+      </section>
+
+      <!-- OUTPUT SIDE -->
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">2 · What the model likely sees</div>
+            <div class="card-subtitle">
+              Summary of visible entities, content, and potential issues.
+            </div>
+          </div>
+        </div>
+
+        <div id="results" class="results">
+          <div class="result-block">
+            <div class="result-title-row">
+              <div class="result-title">Waiting for HTML…</div>
+            </div>
+            <p class="muted small">
+              Paste HTML on the left and click <strong>Analyze HTML</strong>.
+              You’ll see:
+            </p>
+            <ul class="small muted">
+              <li>Title & meta description</li>
+              <li>H1–H3 headings</li>
+              <li>Main text & word count</li>
+              <li>Internal vs external links</li>
+              <li>Schema / JSON-LD blocks</li>
+              <li>JavaScript-dependence heuristic</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <p class="footer-note">
+      <strong>How to explain this to clients:</strong> “This is (roughly) what
+      Google and LLMs see when they first crawl your page: the raw HTML, not
+      the pretty, JavaScript-enhanced version. If it’s not in here, it’s
+      probably not helping your SEO or AI visibility.”
+    </p>
+  </div>
+
+  <script>
+    const htmlInput = document.getElementById("htmlInput");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const resultsEl = document.getElementById("results");
+
+    function sanitize(str = "") {
+      return str.replace(/\s+/g, " ").trim();
+    }
+
+    function truncate(str = "", max = 400) {
+      const clean = str.trim();
+      if (clean.length <= max) return clean;
+      return clean.slice(0, max) + "…";
+    }
+
+    function analyzeHtml() {
+      const rawHtml = htmlInput.value.trim();
+      if (!rawHtml) {
+        alert("Paste some HTML first (View page source → copy → paste).");
+        return;
+      }
+
+      let doc;
+      try {
+        const parser = new DOMParser();
+        doc = parser.parseFromString(rawHtml, "text/html");
+      } catch (e) {
+        console.error(e);
+        alert("Unable to parse HTML. Make sure you pasted full page source.");
+        return;
+      }
+
+      const results = [];
+
+      // --- BASIC HEAD INFO ---
+      const title = sanitize(doc.querySelector("title")?.textContent || "");
+      const metaDesc = sanitize(
+        doc.querySelector('meta[name="description"]')?.getAttribute("content") ||
+          ""
+      );
+
+      results.push(`
+<div class="result-block">
+  <div class="result-title-row">
+    <div class="result-title">Head summary</div>
+  </div>
+  <div class="small">
+    <div><span class="label">Title</span><br><strong>${
+      title || "<no &lt;title&gt; found>"
+    }</strong></div>
+    <div style="margin-top:6px;">
+      <span class="label">Meta description</span><br>
+      ${
+        metaDesc
+          ? metaDesc
+          : '<span class="muted">&lt;meta name="description"&gt; not found</span>'
+      }
+    </div>
+  </div>
+</div>`);
+
+      // --- HEADINGS ---
+      const headingNodes = Array.from(
+        doc.querySelectorAll("h1, h2, h3")
+      ).map((h) => ({
+        level: h.tagName.toLowerCase(),
+        text: sanitize(h.textContent || ""),
+      }));
+
+      const headingsPreview =
+        headingNodes.length === 0
+          ? '<span class="muted small">No H1–H3 headings found in HTML.</span>'
+          : `<pre>${headingNodes
+              .map((h) => `${h.level.toUpperCase()} · ${truncate(h.text, 120)}`)
+              .join("\n")}</pre>`;
+
+      results.push(`
+<div class="result-block">
+  <div class="result-title-row">
+    <div class="result-title">Headings visible in HTML</div>
+    <div class="result-meta">${headingNodes.length} H1–H3 total</div>
+  </div>
+  ${headingsPreview}
+</div>`);
+
+      // --- BODY TEXT & WORD COUNT ---
+      // Remove script / style content influence
+      doc.querySelectorAll("script, style, noscript").forEach((el) => el.remove());
+      const bodyText = sanitize(doc.body?.textContent || "");
+      const wordCount = bodyText ? bodyText.split(/\s+/).filter(Boolean).length : 0;
+
+      results.push(`
+<div class="result-block">
+  <div class="result-title-row">
+    <div class="result-title">Main text snapshot</div>
+    <div class="result-meta">${wordCount} words in body HTML</div>
+  </div>
+  <pre>${truncate(bodyText || "[No visible body text in HTML]")}</pre>
+</div>`);
+
+      // --- LINKS ---
+      const links = Array.from(doc.querySelectorAll("a[href]"));
+      const internal = links.filter((a) => {
+        const href = (a.getAttribute("href") || "").trim();
+        if (!href) return false;
+        if (href.startsWith("#")) return false;
+        if (href.startsWith("mailto:") || href.startsWith("tel:")) return false;
+        // treat relative URLs as internal
+        return !href.startsWith("http");
+      });
+      const external = links.filter((a) => {
+        const href = (a.getAttribute("href") || "").trim();
+        return href.startsWith("http");
+      });
+
+      const sampleLinks = links.slice(0, 10).map((a) => {
+        const href = (a.getAttribute("href") || "").trim();
+        const text = sanitize(a.textContent || "");
+        return `${truncate(href, 80)}   ${
+          text ? "· " + truncate(text, 60) : ""
+        }`;
+      });
+
+      results.push(`
+<div class="result-block">
+  <div class="result-title-row">
+    <div class="result-title">Links exposed in HTML</div>
+    <div class="result-meta">${links.length} total links</div>
+  </div>
+  <div class="metrics-row">
+    <div class="metric-pill"><strong>${internal.length}</strong> internal-ish</div>
+    <div class="metric-pill"><strong>${external.length}</strong> external</div>
+  </div>
+  <div style="margin-top:8px;">
+    <div class="label" style="margin-bottom:4px;">Sample (first 10)</div>
+    ${
+      sampleLinks.length
+        ? `<pre>${sampleLinks.join("\n")}</pre>`
+        : '<span class="muted small">No &lt;a href&gt; links found.</span>'
+    }
+  </div>
+</div>`);
+
+      // --- JSON-LD / SCHEMA ---
+      const jsonLdNodes = Array.from(
+        doc.querySelectorAll('script[type="application/ld+json"]')
+      );
+      let schemaBlock;
+      if (jsonLdNodes.length === 0) {
+        schemaBlock =
+          '<span class="muted small">No <script type="application/ld+json"> blocks found.</span>';
+      } else {
+        const snippets = jsonLdNodes.slice(0, 3).map((node, idx) => {
+          const raw = node.textContent || "";
+          let parsed;
+          try {
+            parsed = JSON.parse(raw);
+          } catch (e) {
+            parsed = null;
+          }
+          const type =
+            (parsed && (parsed["@type"] || parsed[0]?.["@type"])) || "Unknown";
+          return `#${idx + 1}  @type: ${Array.isArray(type) ? type.join(", ") : type}
+${truncate(raw, 380)}`;
+        });
+
+        schemaBlock = `<pre>${snippets.join("\n\n")}${
+          jsonLdNodes.length > 3
+            ? `\n… and ${jsonLdNodes.length - 3} more JSON-LD blocks.`
+            : ""
+        }</pre>`;
+      }
+
+      results.push(`
+<div class="result-block">
+  <div class="result-title-row">
+    <div class="result-title">JSON-LD / schema visibility</div>
+    <div class="result-meta">${jsonLdNodes.length} script blocks</div>
+  </div>
+  ${schemaBlock}
+</div>`);
+
+      // --- JS DEPENDENCE HEURISTIC ---
+      const scriptCount = doc.querySelectorAll("script[src], script:not([src])")
+        .length;
+      const bodyLength = bodyText.length;
+
+      let status, message;
+      if (bodyLength === 0) {
+        status = "bad";
+        message =
+          "No visible body text in raw HTML. This page is very likely JavaScript-dependent.";
+      } else if (bodyLength < 400 && scriptCount > 10) {
+        status = "warn";
+        message =
+          "Very little text in HTML with many scripts. This might be heavily JS-rendered – check with JS disabled.";
+      } else {
+        status = "ok";
+        message =
+          "There is a reasonable amount of text in the HTML. Content is likely not fully dependent on JavaScript.";
+      }
+
+      const statusLabel =
+        status === "ok"
+          ? '<span class="status-ok">Looks mostly HTML-first</span>'
+          : status === "warn"
+          ? '<span class="status-warn">Potential JS-dependence</span>'
+          : '<span class="status-bad">High JS-dependence risk</span>';
+
+      results.push(`
+<div class="result-block">
+  <div class="result-title-row">
+    <div class="result-title">JavaScript-dependence heuristic</div>
+  </div>
+  <p class="small">
+    ${statusLabel}<br />
+    ${message}
+  </p>
+  <div class="metrics-row" style="margin-top:4px;">
+    <div class="metric-pill"><strong>${bodyLength}</strong> characters of body text</div>
+    <div class="metric-pill"><strong>${scriptCount}</strong> &lt;script&gt; tags in HTML</div>
+  </div>
+  <p class="small muted" style="margin-top:6px;">
+    This is a heuristic. For a real test, also open the page with JavaScript disabled in Chrome and see if your core content still appears.
+  </p>
+</div>`);
+
+      resultsEl.innerHTML = results.join("\n");
+    }
+
+    analyzeBtn.addEventListener("click", analyzeHtml);
+  </script>
+</body>
+</html>
